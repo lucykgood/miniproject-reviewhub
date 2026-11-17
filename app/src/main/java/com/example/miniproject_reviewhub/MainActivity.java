@@ -61,4 +61,16 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+
+    // Already-authenticated user can log in automatically
+    @Override
+    protected void onStart() {
+        super.onStart();
+
+        if (auth.getCurrentUser() != null) {
+            Intent intent = new Intent(this, HomeActivity.class);
+            startActivity(intent);
+            finish();
+        }
+    }
 }
