@@ -8,12 +8,17 @@ import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.CheckBox;
+import android.widget.ListView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.Query;
+
+import java.util.ArrayList;
 
 public class HomeActivity extends AppCompatActivity {
 
@@ -23,6 +28,14 @@ public class HomeActivity extends AppCompatActivity {
     private ImageView profileImageView;
     private ProgressBar profileProgressBar;
     private Button logoutButton;
+    private ListView reviewsListView;
+    private CheckBox myReviewsCheckBox;
+    private ProgressBar reviewsProgressBar;
+    private TextView emptyReviewsTextView;
+
+    private ArrayList<Review> allReviews;
+    private ArrayList<Review> displayedReviews;
+    private ReviewAdapter reviewAdapter;
 
     private FirebaseAuth auth;
     private FirebaseFirestore db;
@@ -41,10 +54,79 @@ public class HomeActivity extends AppCompatActivity {
         profileImageView = findViewById(R.id.profileImageView);
         profileProgressBar = findViewById(R.id.profileProgressBar);
         logoutButton = findViewById(R.id.logoutButton);
+        reviewsListView = findViewById(R.id.reviewsListView);
+        myReviewsCheckBox = findViewById(R.id.myReviewsCheckBox);
+        reviewsProgressBar = findViewById(R.id.reviewsProgressBar);
+        emptyReviewsTextView = findViewById(R.id.emptyReviewsTextView);
+
+        allReviews = new ArrayList<>();
+        displayedReviews = new ArrayList<>();
+
+        reviewAdapter = new ReviewAdapter(this, displayedReviews);
+        reviewsListView.setAdapter(reviewAdapter);
+
+        myReviewsCheckBox.setOnCheckedChangeListener(
+                (buttonView, isChecked) -> filterReviews()
+        );
 
         logoutButton.setOnClickListener(v -> logoutUser());
 
         loadUserProfile();
+        loadReviews();
+    }
+
+    private void loadReviews() {
+        reviewsProgressBar.setVisibility(View.VISIBLE);
+        emptyReviewsTextView.setVisibility(View.GONE);
+
+        // Sorts and retrieves needed documents
+        db.collection("reviews").orderBy("createdAt", Query.Direction.DESCENDING).get().addOnSuccessListener(querySnapshot -> {
+            reviewsProgressBar.setVisibility(View.GONE);
+            allReviews.clear();
+
+            for (com.google.firebase.firestore.DocumentSnapshot document : querySnapshot.getDocuments()) {
+                Review review = document.toObject(Review.class);
+
+                if (review != null) {
+                    review.setId(document.getId());
+                    allReviews.add(review);
+                }
+            }
+            filterReviews();
+        }).addOnFailureListener(e -> {
+            reviewsProgressBar.setVisibility(View.GONE);
+            Toast.makeText(this, "Failed to load reviews", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void filterReviews() {
+        displayedReviews.clear();
+        boolean myReviewsOnly = myReviewsCheckBox.isChecked();
+        String currentUserId = auth.getCurrentUser().getUid();
+
+        for (Review review : allReviews) {
+            if (!myReviewsOnly || review.getUserId().equals(currentUserId)) {
+                displayedReviews.add(review);
+            }
+        }
+
+        reviewAdapter.notifyDataSetChanged();
+
+        if (displayedReviews.isEmpty()) {
+            emptyReviewsTextView.setVisibility(View.VISIBLE);
+        } else {
+            emptyReviewsTextView.setVisibility(View.GONE);
+        }
+    }
+
+    // Refresh reviews
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        if (db != null && auth.getCurrentUser() != null) {
+            loadReviews();
+        }
     }
 
     private void loadUserProfile() {
