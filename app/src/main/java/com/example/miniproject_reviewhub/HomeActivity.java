@@ -67,6 +67,16 @@ public class HomeActivity extends AppCompatActivity {
         reviewAdapter = new ReviewAdapter(this, displayedReviews);
         reviewsListView.setAdapter(reviewAdapter);
 
+        // Make review clickable
+        reviewsListView.setOnItemClickListener((parent, view, position, id) -> {
+            Review selectedReview = displayedReviews.get(position);
+
+            Intent intent = new Intent(HomeActivity.this, ReviewDetailsActivity.class);
+            intent.putExtra("reviewId", selectedReview.getId());
+            startActivity(intent);
+        });
+
+
         myReviewsCheckBox.setOnCheckedChangeListener(
                 (buttonView, isChecked) -> filterReviews()
         );
