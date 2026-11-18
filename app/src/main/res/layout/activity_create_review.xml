@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Create Book Review"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="20dp"/>
+
+        <ImageView
+            android:id="@+id/bookImageView"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:scaleType="fitCenter"
+            android:contentDescription="Captured book cover"
+            android:background="#EEEEEE"/>
+
+        <Button
+            android:id="@+id/takePhotoButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Take Photo"
+            android:layout_marginTop="16dp"/>
+
+        <Button
+            android:id="@+id/analyzePhotoButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Analyze Photo"
+            android:enabled="false"/>
+
+        <EditText
+            android:id="@+id/titleEditText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Book Title"
+            android:inputType="textCapWords"
+            android:layout_marginTop="16dp"/>
+
+        <EditText
+            android:id="@+id/authorEditText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Author"
+            android:inputType="textCapWords"/>
+
+        <EditText
+            android:id="@+id/reviewEditText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Write your review"
+            android:gravity="top"
+            android:inputType="textMultiLine|textCapSentences"
+            android:minLines="5"
+            android:layout_marginTop="16dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Your Rating"
+            android:textSize="18sp"
+            android:layout_marginTop="16dp"/>
+
+        <RatingBar
+            android:id="@+id/ratingBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:numStars="5"
+            android:stepSize="1"
+            android:rating="0"/>
+
+        <Button
+            android:id="@+id/polishButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Polish Review"/>
+
+        <Button
+            android:id="@+id/saveReviewButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Save Review"/>
+
+        <ProgressBar
+            android:id="@+id/llmProgressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone"/>
+
+    </LinearLayout>
+</ScrollView>

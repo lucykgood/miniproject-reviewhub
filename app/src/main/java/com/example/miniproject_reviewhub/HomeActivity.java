@@ -27,6 +27,7 @@ public class HomeActivity extends AppCompatActivity {
     private TextView bioTextView;
     private ImageView profileImageView;
     private ProgressBar profileProgressBar;
+    private Button addReviewButton;
     private Button logoutButton;
     private ListView reviewsListView;
     private CheckBox myReviewsCheckBox;
@@ -53,6 +54,7 @@ public class HomeActivity extends AppCompatActivity {
         bioTextView = findViewById(R.id.bioTextView);
         profileImageView = findViewById(R.id.profileImageView);
         profileProgressBar = findViewById(R.id.profileProgressBar);
+        addReviewButton = findViewById(R.id.addReviewButton);
         logoutButton = findViewById(R.id.logoutButton);
         reviewsListView = findViewById(R.id.reviewsListView);
         myReviewsCheckBox = findViewById(R.id.myReviewsCheckBox);
@@ -70,6 +72,10 @@ public class HomeActivity extends AppCompatActivity {
         );
 
         logoutButton.setOnClickListener(v -> logoutUser());
+        addReviewButton.setOnClickListener(v -> {
+            Intent intent = new Intent(HomeActivity.this, CreateReviewActivity.class);
+            startActivity(intent);
+        });
 
         loadUserProfile();
         loadReviews();
