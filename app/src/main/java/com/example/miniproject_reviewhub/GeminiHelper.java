@@ -21,9 +21,13 @@ public class GeminiHelper {
     private static final String API_URL =
             "https://generativelanguage.googleapis.com/v1beta/"
                     + "models/gemini-3.8-flash:generateContent";
+    private static final String INTERACTIONS_URL =
+            "https://generativelanguage.googleapis.com/v1beta/interactions";
+
 
     public static String analyzeBook(Context context, Uri photoUri) throws Exception {
-        // Read and resize the photograph
+
+        // Read the photograph
         Bitmap bitmap;
 
         try (InputStream input = context.getContentResolver().openInputStream(photoUri)) {
@@ -34,6 +38,7 @@ public class GeminiHelper {
             throw new Exception("Could not read image");
         }
 
+        // Resize image
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();
 
@@ -43,14 +48,12 @@ public class GeminiHelper {
             bitmap = Bitmap.createScaledBitmap(bitmap, Math.round(width * scale), Math.round(height * scale), true);
         }
 
+        // Convert image to Base64
         ByteArrayOutputStream imageStream = new ByteArrayOutputStream();
-
         bitmap.compress(Bitmap.CompressFormat.JPEG, 80, imageStream);
-
-        // Coonvert image bytes -> text for JSON request
         String imageBase64 = Base64.encodeToString(imageStream.toByteArray(), Base64.NO_WRAP);
 
-        // Build the Gemini request
+        // Create the prompt
         String prompt =
                 "Look at this book cover. Identify the book title "
                         + "and author. Do not guess information that is "
@@ -58,43 +61,35 @@ public class GeminiHelper {
                         + "with two string fields: title and author. "
                         + "Use empty strings for unknown information.";
 
+        // Build the API JSON input
         JSONObject textPart = new JSONObject();
+        textPart.put("type", "text");
         textPart.put("text", prompt);
 
-        JSONObject imageData = new JSONObject();
-        imageData.put("mime_type", "image/jpeg");
-        imageData.put("data", imageBase64);
-
         JSONObject imagePart = new JSONObject();
-        imagePart.put("inline_data", imageData);
+        imagePart.put("type", "image");
+        imagePart.put("mime_type", "image/jpeg");
+        imagePart.put("data", imageBase64);
 
-        JSONArray parts = new JSONArray();
-        parts.put(textPart);
-        parts.put(imagePart);
-
-        JSONObject content = new JSONObject();
-        content.put("parts", parts);
-
-        JSONArray contents = new JSONArray();
-        contents.put(content);
+        JSONArray inputParts = new JSONArray();
+        inputParts.put(textPart);
+        inputParts.put(imagePart);
 
         JSONObject requestBody = new JSONObject();
-        requestBody.put("contents", contents);
+        requestBody.put("model", "gemini-3.5-flash-lite");
+        requestBody.put("input", inputParts);
 
-        JSONObject config = new JSONObject();
-        config.put("responseMimeType", "application/json");
-        requestBody.put("generationConfig", config);
-
-        // Send the HTTP request
+        // Send the request
         HttpURLConnection connection = null;
 
         try {
-            URL url = new URL(API_URL);
+            URL url = new URL(INTERACTIONS_URL);
             connection = (HttpURLConnection) url.openConnection();
 
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json");
             connection.setRequestProperty("x-goog-api-key", BuildConfig.GEMINI_API_KEY);
+
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(60000);
             connection.setDoOutput(true);
@@ -103,44 +98,77 @@ public class GeminiHelper {
                 output.write(requestBody.toString().getBytes(StandardCharsets.UTF_8));
             }
 
+            // Read  response
             int responseCode = connection.getResponseCode();
+            InputStream responseStream = (responseCode >= 200 && responseCode < 300) ? connection.getInputStream() : connection.getErrorStream();
 
-            if (responseCode != 200) {
-                String errorMessage = "";
+            if (responseStream == null) {
+                throw new Exception("Gemini returned HTTP " + responseCode + " without a response body");
+            }
 
-                try (InputStream errorStream = connection.getErrorStream()) {
-                    if (errorStream != null) {
-                        try (java.util.Scanner scanner =
-                                     new java.util.Scanner(errorStream, "UTF-8")
-                                             .useDelimiter("\\A")) {
-                            errorMessage = scanner.hasNext()
-                                    ? scanner.next() : "";
+            StringBuilder responseText = new StringBuilder();
+
+            try (java.io.BufferedReader reader =
+                         new java.io.BufferedReader(
+                                 new java.io.InputStreamReader(
+                                         responseStream,
+                                         StandardCharsets.UTF_8
+                                 )
+                         )) {
+
+                String line;
+
+                while ((line = reader.readLine()) != null) {
+                    responseText.append(line);
+                }
+            }
+
+            if (responseCode < 200 || responseCode >= 300) {
+                throw new Exception("Gemini request failed: HTTP " + responseCode + " - " + responseText);
+            }
+
+            // Extract model's response
+            JSONObject response = new JSONObject(responseText.toString());
+            JSONArray steps = response.getJSONArray("steps");
+            StringBuilder answer = new StringBuilder();
+
+            for (int i = 0; i < steps.length(); i++) {
+                JSONObject step = steps.getJSONObject(i);
+
+                if ("model_output".equals(step.optString("type"))) {
+                    JSONArray content = step.getJSONArray("content");
+
+                    for (int j = 0; j < content.length(); j++) {
+                        JSONObject part = content.getJSONObject(j);
+
+                        if ("text".equals(part.optString("type"))) {
+                            answer.append(part.getString("text"));
                         }
                     }
                 }
-
-                throw new Exception(
-                        "Gemini request failed: HTTP "
-                                + responseCode + " - " + errorMessage
-                );
             }
 
-            String responseText;
-
-            try (InputStream input = connection.getInputStream();
-                 java.util.Scanner scanner = new java.util.Scanner(input, "UTF-8").useDelimiter("\\A")) {
-
-                responseText = scanner.hasNext() ? scanner.next() : "";
+            if (answer.length() == 0) {
+                throw new Exception("Gemini returned no book information");
             }
 
-            JSONObject response = new JSONObject(responseText);
+            // Validate that Gemini returned JSON
+            String result = answer.toString().trim();
 
-            return response.getJSONArray("candidates")
-                    .getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-                    .getJSONObject(0)
-                    .getString("text");
+            // Remove Markdown fences if Gemini includes them
+            if (result.startsWith("```")) {
+                result = result.replaceFirst("^```(?:json)?\\s*", "");
+                result = result.replaceFirst("\\s*```$", "");
+            }
+
+            JSONObject bookInfo = new JSONObject(result);
+
+            // Ensure both expected fields exist
+            JSONObject cleanResult = new JSONObject();
+            cleanResult.put("title", bookInfo.optString("title", ""));
+            cleanResult.put("author", bookInfo.optString("author", ""));
+
+            return cleanResult.toString();
 
         } finally {
             if (connection != null) {
@@ -149,9 +177,10 @@ public class GeminiHelper {
         }
     }
 
+
     public static String polishReview(String reviewText, int rating) throws Exception {
 
-        // Determine how to customize the prompt
+        // Choose prompt tone based on  rating
         String toneInstruction;
 
         if (rating == 0) {
@@ -164,7 +193,7 @@ public class GeminiHelper {
             toneInstruction = "Keep the review positive and enthusiastic.";
         }
 
-        // Build the JSON request
+        // Create prompt JSON
         String prompt =
                 "Polish the following book review. "
                         + toneInstruction
@@ -173,64 +202,88 @@ public class GeminiHelper {
                         + "Return only the revised review text.\n\n"
                         + reviewText;
 
-        JSONObject textPart = new JSONObject();
-        textPart.put("text", prompt);
-
-        JSONArray parts = new JSONArray();
-        parts.put(textPart);
-
-        JSONObject content = new JSONObject();
-        content.put("parts", parts);
-
-        JSONArray contents = new JSONArray();
-        contents.put(content);
-
+        // Build API request
         JSONObject requestBody = new JSONObject();
-        requestBody.put("contents", contents);
+        requestBody.put("model", "gemini-3.5-flash-lite");
+        requestBody.put("input", prompt);
 
         HttpURLConnection connection = null;
 
-        // Request the LLM
         try {
-            URL url = new URL(API_URL);
+            // Open connection
+            URL url = new URL(INTERACTIONS_URL);
             connection = (HttpURLConnection) url.openConnection();
 
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json");
             connection.setRequestProperty("x-goog-api-key", BuildConfig.GEMINI_API_KEY);
+
+            connection.setDoOutput(true);
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(60000);
-            connection.setDoOutput(true);
 
+            // Send request
             try (OutputStream output = connection.getOutputStream()) {
                 output.write(requestBody.toString().getBytes(StandardCharsets.UTF_8));
             }
 
+            // Read response + error details
             int responseCode = connection.getResponseCode();
 
-            if (responseCode != 200) {
-                throw new Exception("Gemini request failed: HTTP " + responseCode);
+            InputStream responseStream = (responseCode >= 200 && responseCode < 300) ? connection.getInputStream() : connection.getErrorStream();
+
+            if (responseStream == null) {
+                throw new Exception("Gemini returned HTTP " + responseCode + " without a response body");
             }
 
-            String responseText;
+            StringBuilder responseText = new StringBuilder();
 
-            try (InputStream input = connection.getInputStream();
-                 java.util.Scanner scanner =
-                         new java.util.Scanner(input, "UTF-8")
-                                 .useDelimiter("\\A")) {
+            try (java.io.BufferedReader reader =
+                         new java.io.BufferedReader(
+                                 new java.io.InputStreamReader(
+                                         responseStream,
+                                         StandardCharsets.UTF_8
+                                 )
+                         )) {
 
-                responseText = scanner.hasNext()
-                        ? scanner.next() : "";
+                String line;
+
+                while ((line = reader.readLine()) != null) {
+                    responseText.append(line);
+                }
             }
 
-            JSONObject response = new JSONObject(responseText);
+            if (responseCode < 200 || responseCode >= 300) {
+                throw new Exception("Gemini request failed: HTTP " + responseCode + " - " + responseText);
+            }
 
-            return response.getJSONArray("candidates")
-                    .getJSONObject(0)
-                    .getJSONObject("content")
-                    .getJSONArray("parts")
-                    .getJSONObject(0)
-                    .getString("text");
+            // Parse response
+            JSONObject response = new JSONObject(responseText.toString());
+            JSONArray steps = response.getJSONArray("steps");
+
+            StringBuilder answer = new StringBuilder();
+
+            for (int i = 0; i < steps.length(); i++) {
+                JSONObject step = steps.getJSONObject(i);
+
+                if ("model_output".equals(step.optString("type"))) {
+                    JSONArray content = step.getJSONArray("content");
+
+                    for (int j = 0; j < content.length(); j++) {
+                        JSONObject part = content.getJSONObject(j);
+
+                        if ("text".equals(part.optString("type"))) {
+                            answer.append(part.getString("text"));
+                        }
+                    }
+                }
+            }
+
+            if (answer.length() == 0) {
+                throw new Exception("Gemini returned no usable review text");
+            }
+
+            return answer.toString().trim();
 
         } finally {
             if (connection != null) {
